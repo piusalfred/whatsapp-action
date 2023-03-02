@@ -30,10 +30,23 @@ type (
 	}
 
 	Response struct {
-		StatusCode  int
-		PhoneNumber string
+		StatusCode int
+		Receiver   string
+		MessageID  string
 	}
 )
+
+func flattenResponse(receiver string, response *whttp.Response) *Response {
+	messageID := ""
+	if response != nil && response.Message != nil && len(response.Message.Messages) > 0 {
+		messageID = response.Message.Messages[0].ID
+	}
+	return &Response{
+		StatusCode: response.StatusCode,
+		Receiver:   receiver,
+		MessageID:  messageID,
+	}
+}
 
 func Run(ctx context.Context, inputs *Inputs) error {
 	recipients := inputs.Recipients
@@ -75,7 +88,7 @@ func Run(ctx context.Context, inputs *Inputs) error {
 	}
 
 	errChan := make(chan error, 1)
-	responseChan := make(chan *whttp.Response, nOfRecipients)
+	responseChan := make(chan *Response, nOfRecipients)
 	// before exiting, print all responses
 	defer func() {
 		for resp := range responseChan {
@@ -96,7 +109,7 @@ func Run(ctx context.Context, inputs *Inputs) error {
 }
 
 func run(ctx context.Context, client *whatsapp.Client, recipients []string,
-	message *whatsapp.TextMessage, responses chan<- *whttp.Response,
+	message *whatsapp.TextMessage, responses chan<- *Response,
 ) error {
 	errg, gctx := errgroup.WithContext(ctx)
 	for _, recipient := range recipients {
@@ -109,7 +122,7 @@ func run(ctx context.Context, client *whatsapp.Client, recipients []string,
 				if err != nil {
 					return err
 				}
-				responses <- resp
+				responses <- flattenResponse(recipient, resp)
 				return nil
 			}
 		}
@@ -130,7 +143,7 @@ type readfd int
 func (r readfd) Read(buf []byte) (int, error) {
 	n, err := syscall.Read(int(r), buf)
 	if err != nil {
-		return -1, fmt.Errorf("pesakit base io read error: %w", err)
+		return -1, fmt.Errorf("read error: %w", err)
 	}
 
 	return n, nil
@@ -141,7 +154,7 @@ type writefd int
 func (w writefd) Write(buf []byte) (int, error) {
 	n, err := syscall.Write(int(w), buf)
 	if err != nil {
-		return -1, fmt.Errorf("bedrock/io write error %w", err)
+		return -1, fmt.Errorf("write error %w", err)
 	}
 
 	return n, nil
@@ -154,6 +167,7 @@ const (
 )
 
 func main() {
+
 	inputs := &Inputs{
 		BaseURL:           os.Getenv("INPUT_BASE_URL"),
 		AccessToken:       os.Getenv("INPUT_ACCESS_TOKEN"),
