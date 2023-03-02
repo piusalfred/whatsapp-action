@@ -3,9 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	whatsapp "github.com/piusalfred/whatsapp"
-	whttp "github.com/piusalfred/whatsapp/http"
-	errgroup "golang.org/x/sync/errgroup"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +10,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	whatsapp "github.com/piusalfred/whatsapp"
+	whttp "github.com/piusalfred/whatsapp/http"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 type (
@@ -35,7 +36,6 @@ type (
 )
 
 func Run(ctx context.Context, inputs *Inputs) error {
-
 	recipients := inputs.Recipients
 	nOfRecipients := len(recipients)
 	if nOfRecipients == 0 {
@@ -57,7 +57,8 @@ func Run(ctx context.Context, inputs *Inputs) error {
 	}
 
 	httpClient := &http.Client{
-		Transport: transport}
+		Transport: transport,
+	}
 	options := []whatsapp.ClientOption{
 		whatsapp.WithHTTPClient(httpClient),
 		whatsapp.WithBaseURL(inputs.BaseURL),
@@ -95,7 +96,8 @@ func Run(ctx context.Context, inputs *Inputs) error {
 }
 
 func run(ctx context.Context, client *whatsapp.Client, recipients []string,
-	message *whatsapp.TextMessage, responses chan<- *whttp.Response) error {
+	message *whatsapp.TextMessage, responses chan<- *whttp.Response,
+) error {
 	errg, gctx := errgroup.WithContext(ctx)
 	for _, recipient := range recipients {
 		recipient := recipient
@@ -171,5 +173,4 @@ func main() {
 		fmt.Fprintf(stderr, "error: %s", err.Error())
 		os.Exit(1)
 	}
-
 }
