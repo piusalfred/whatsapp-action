@@ -1,4 +1,3 @@
-ction.yml
 name: 'whatsapp notify action'
 author: 'Pius Alfred'
 description: 'send text messages and template messages to whatsapp using whatsapp cloud api'

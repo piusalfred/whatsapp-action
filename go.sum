@@ -1,0 +1,4 @@
+github.com/piusalfred/whatsapp v0.0.0-20230302142601-84aa47799be6 h1:bMAd7fTEolX5WaMPEA+uD38p/SuDXqyQX25CZJR4QWI=
+github.com/piusalfred/whatsapp v0.0.0-20230302142601-84aa47799be6/go.mod h1:wZFn56XLg2osOtLt3avtK9+nKgyK97UWJ3H5xZ3IHrc=
+golang.org/x/sync v0.1.0 h1:wsuoTGHzEhffawBOhz5CYhcrV4IdKZbEyZjBMuTp12o=
+golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
