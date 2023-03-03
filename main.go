@@ -2,18 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
-	whatsapp "github.com/piusalfred/whatsapp"
+	"github.com/piusalfred/whatsapp"
 	whttp "github.com/piusalfred/whatsapp/http"
-	errgroup "golang.org/x/sync/errgroup"
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -48,7 +50,7 @@ func flattenResponse(receiver string, response *whttp.Response) *Response {
 	}
 }
 
-func Run(ctx context.Context, inputs *Inputs) error {
+func Run(ctx context.Context, inputs *Inputs, responses chan<- *Response) error {
 	recipients := inputs.Recipients
 	nOfRecipients := len(recipients)
 	if nOfRecipients == 0 {
@@ -87,24 +89,23 @@ func Run(ctx context.Context, inputs *Inputs) error {
 		PreviewURL: inputs.PreviewURL,
 	}
 
-	errChan := make(chan error, 1)
-	responseChan := make(chan *Response, nOfRecipients)
-	// before exiting, print all responses
-	defer func() {
-		for resp := range responseChan {
-			stdout.Write([]byte(fmt.Sprintf("response: %+v", resp)))
-		}
-	}()
+	errChan := make(chan error, len(inputs.Recipients))
+
 	go func() {
-		errChan <- run(ctx, client, inputs.Recipients, message, responseChan)
+		errChan <- run(ctx, client, inputs.Recipients, message, responses)
 	}()
+
+	allErrors := make([]error, 0, len(inputs.Recipients))
 
 	// Wait for all goroutines to finish or for a signal to be received
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case err := <-errChan:
-		return err
+	case <-errChan:
+		for err := range errChan {
+			allErrors = append(allErrors, err)
+		}
+		return errors.Join(allErrors...)
 	}
 }
 
@@ -138,16 +139,16 @@ func run(ctx context.Context, client *whatsapp.Client, recipients []string,
 	return nil
 }
 
-type readfd int
-
-func (r readfd) Read(buf []byte) (int, error) {
-	n, err := syscall.Read(int(r), buf)
-	if err != nil {
-		return -1, fmt.Errorf("read error: %w", err)
-	}
-
-	return n, nil
-}
+////type readfd int
+//
+//func (r readfd) Read(buf []byte) (int, error) {
+//	n, err := syscall.Read(int(r), buf)
+//	if err != nil {
+//		return -1, fmt.Errorf("read error: %w", err)
+//	}
+//
+//	return n, nil
+//}
 
 type writefd int
 
@@ -161,13 +162,12 @@ func (w writefd) Write(buf []byte) (int, error) {
 }
 
 const (
-	stdin  = readfd(0)
+	//stdin  = readfd(0)
 	stdout = writefd(1)
 	stderr = writefd(2)
 )
 
 func main() {
-
 	inputs := &Inputs{
 		BaseURL:           os.Getenv("INPUT_BASE_URL"),
 		AccessToken:       os.Getenv("INPUT_ACCESS_TOKEN"),
@@ -181,10 +181,32 @@ func main() {
 
 	ctx := context.Background()
 	nctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
-	if err := Run(nctx, inputs); err != nil {
-		fmt.Fprintf(stderr, "error: %s", err.Error())
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	errChan := make(chan error, 1)
+	responseChan := make(chan *Response, len(inputs.Recipients))
+
+	go func() {
+		errChan <- Run(nctx, inputs, responseChan)
+	}()
+
+	select {
+	case <-nctx.Done():
+	case sig := <-signalChan:
+		_, _ = fmt.Fprintf(stderr, "Received signal: %s\n", sig)
+		cancel()
+	}
+
+	close(responseChan)
+
+	for resp := range responseChan {
+		_, _ = stdout.Write([]byte(fmt.Sprintf("response: %+v", resp)))
+	}
+
+	if err := <-errChan; err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %s\n", err)
 		os.Exit(1)
 	}
 }
